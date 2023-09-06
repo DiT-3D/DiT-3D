@@ -83,7 +83,7 @@ Please check more training scripts in the [scripts](./scripts) folder.
 
 ## Testing
 
-For testing and visualization on chair using 'S/4' backbone and voxel size of 32, please run
+For testing and visualization on chair using the DiT-3D model (S/4) with voxel size of 32, please run
 
 ```bash
 $ python test_generation.py --dataroot /path/to/ShapeNetCore.v2.PC15k/ \
