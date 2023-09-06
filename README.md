@@ -63,12 +63,12 @@ More pretrained weights will be released soon. Please stay tuned!
 
 ## Training
 
-For training the DiT-3D model, please run
+For training the DiT-3D model (S/4) with voxel size of 32 on chair, please run
 
 ```bash
 $ python train_generation.py --distribution_type 'multi' \
     --dataroot /path/to/ShapeNetCore.v2.PC15k/ \
-    --category car|chair|airplane \
+    --category chair \
     --experiment_name /path/to/experiments \
     --model_type 'DiT-S/4' \
     --bs 16 \
@@ -76,22 +76,24 @@ $ python train_generation.py --distribution_type 'multi' \
     --lr 1e-4 \
     --use_tb
 # for using window attention, please add flags below
-    --window_size 2 --window_block_indexes '0,3,6,9'
+    --window_size 4 --window_block_indexes '0,3,6,9'
 ```
+Please check more training scripts in the [scripts](./scripts) folder.
 
 
 ## Testing
 
-For testing, simply run
+For testing and visualization on chair using 'S/4' backbone and voxel size of 32, please run
 
 ```bash
 $ python test_generation.py --dataroot /path/to/ShapeNetCore.v2.PC15k/ \
-    --category car|chair|airplane \
+    --category chair \
     --model_type 'DiT-S/4' \
     --voxel_size 32 \
     --model MODEL_PATH
 ```
 
+For point clouds rendering, we use [mitsuba](https://github.com/mitsuba-renderer/mitsuba2) for visualization. 
 
 
 ## Citation
@@ -110,7 +112,6 @@ If you find this repository useful, please cite our paper:
 
 
 This repo is inspired by [DiT](https://github.com/facebookresearch/DiT) and [PVD](https://github.com/alexzhou907/PVD). Thanks for their wonderful works.
-
 
 
 
