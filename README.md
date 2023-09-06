@@ -63,7 +63,12 @@ More pretrained weights will be released soon. Please stay tuned!
 
 ## Training
 
-For training the DiT-3D model (S/4) with voxel size of 32 on chair, please run
+Our DiT-3D supports multiple configuration settings:
+- voxel sizes: 16, 32, 64
+- patch dimensions: 2, 4, 8
+- model complexity: Small (S), Base (B), Large (L) and Extra Large (XL)
+
+For training the DiT-3D model (Small, patch dim 4) with a voxel size of 32 on chair, please run
 
 ```bash
 $ python train_generation.py --distribution_type 'multi' \
