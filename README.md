@@ -71,7 +71,7 @@ Our DiT-3D supports multiple configuration settings:
 For training the DiT-3D model (Small, patch dim 4) with a voxel size of 32 on chair, please run
 
 ```bash
-$ python train_generation.py --distribution_type 'multi' \
+$ python train.py --distribution_type 'multi' \
     --dataroot /path/to/ShapeNetCore.v2.PC15k/ \
     --category chair \
     --experiment_name /path/to/experiments \
