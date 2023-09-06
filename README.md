@@ -61,6 +61,7 @@ Pretrained models can be downloaded [here](https://drive.google.com/drive/folder
 More pretrained weights will be released soon. Please stay tuned!
 
 
+
 ## Training
 
 For training the DiT-3D model, please run
