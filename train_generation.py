@@ -13,8 +13,9 @@ from datasets.shapenet_data_pc import ShapeNet15kPointClouds
 
 from copy import deepcopy
 from collections import OrderedDict
-from models3d import DiT3D_models
-from models3d_window_attn import DiT3D_models_WindAttn
+
+from models.dit3d import DiT3D_models
+from models.dit3d_window_attn import DiT3D_models_WindAttn
 
 from tensorboardX import SummaryWriter
 

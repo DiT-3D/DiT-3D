@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from datasets.shapenet_data_pc import ShapeNet15kPointClouds
 
-from models3d import DiT3D_models
+from models.dit3d import DiT3D_models
 
 '''
 models
