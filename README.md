@@ -69,7 +69,7 @@ For training the DiT-3D model, please run
 ```bash
 $ python train_generation.py --distribution_type 'multi' \
     --dataroot /path/to/ShapeNetCore.v2.PC15k/ \
-    --category car|chair|airplane \
+    --category chair|car|airplane \
     --experiment_name /path/to/experiments \
     --model_type 'DiT-S/4' \
     --bs 16 \
@@ -87,7 +87,7 @@ For testing, simply run
 
 ```bash
 $ python test_generation.py --dataroot /path/to/ShapeNetCore.v2.PC15k/ \
-    --category car|chair|airplane \
+    --category chair|car|airplane \
     --model_type 'DiT-S/4' \
     --voxel_size 32 \
     --model MODEL_PATH
