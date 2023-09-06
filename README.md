@@ -91,7 +91,7 @@ Please check more training scripts in the [scripts](./scripts) folder.
 For testing and visualization on chair using the DiT-3D model (S/4, no window attention) with voxel size of 32, please run
 
 ```bash
-$ python test_generation.py --dataroot /path/to/ShapeNetCore.v2.PC15k/ \
+$ python test.py --dataroot /path/to/ShapeNetCore.v2.PC15k/ \
     --category chair \
     --model_type 'DiT-S/4' \
     --voxel_size 32 \
