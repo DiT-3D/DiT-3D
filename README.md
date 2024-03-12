@@ -59,7 +59,7 @@ For generation, we use ShapeNet point cloud, which can be downloaded [here](http
 ## Pretrained models
 Pretrained models can be downloaded [here](https://drive.google.com/drive/folders/1sRnCObeDal3HeD-h_1L28gY9qE6fP0ZZ?usp=sharing).
 
-More pretrained weights will be released soon. Please stay tuned!
+Note that this pre-trained model is used as a test case, and we reported the XL models to the main table in our paper for final comparisons. 
 
 
 ## Training
