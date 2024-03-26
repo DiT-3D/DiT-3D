@@ -59,8 +59,9 @@ For generation, we use ShapeNet point cloud, which can be downloaded [here](http
 ## Pretrained models
 Pretrained models can be downloaded [here](https://drive.google.com/drive/folders/1sRnCObeDal3HeD-h_1L28gY9qE6fP0ZZ?usp=sharing).
 
-Note that this pre-trained model is used as a test case, and we reported the XL models to the main table in our paper for final comparisons. 
+Note that this pre-trained model is based on Small with a patch size of 4. We reported the XL models to the main table in our paper for final comparisons. 
 
+Testing this S/4 model, you should get performance close to 56.31, 55.82, 47.21, and 50.75 for 1-NNA-CD, 1-NNA-EMD, COV-CD, and COV-EMD.
 
 ## Training
 
