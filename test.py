@@ -479,19 +479,11 @@ def main(opt):
         opt.beta_end = 0.008
         opt.schedule_type = 'warm0.1'
 
-    # exp_id = os.path.splitext(os.path.basename(__file__))[0]
-    # dir_id = os.path.dirname(__file__)
     output_dir = get_output_dir(opt.model_dir, opt.experiment_name)
     copy_source(__file__, output_dir)
 
-    # Use random port to avoid collision between parallel jobs
-    # if opt.world_size == 1:
-    #     opt.port = np.random.randint(10000, 20000)
     opt.dist_url = f'tcp://{opt.node}:{opt.port}'
     print('Using url {}'.format(opt.dist_url))
-
-    # if opt.dist_url == "env://" and opt.world_size == -1:
-    #     opt.world_size = int(os.environ["WORLD_SIZE"])
 
     if opt.distribution_type == 'multi':
         opt.ngpus_per_node = torch.cuda.device_count()
