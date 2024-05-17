@@ -1,6 +1,5 @@
 # DiT-3D: Exploring Plain Diffusion Transformers for 3D Shape Generation
 
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/dit-3d-exploring-plain-diffusion-transformers/point-cloud-generation-on-shapenet)](https://paperswithcode.com/sota/point-cloud-generation-on-shapenet?p=dit-3d-exploring-plain-diffusion-transformers) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/dit-3d-exploring-plain-diffusion-transformers/point-cloud-generation-on-shapenet-chair)](https://paperswithcode.com/sota/point-cloud-generation-on-shapenet-chair?p=dit-3d-exploring-plain-diffusion-transformers) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/dit-3d-exploring-plain-diffusion-transformers/point-cloud-generation-on-shapenet-airplane)](https://paperswithcode.com/sota/point-cloud-generation-on-shapenet-airplane?p=dit-3d-exploring-plain-diffusion-transformers) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/dit-3d-exploring-plain-diffusion-transformers/point-cloud-generation-on-shapenet-car)](https://paperswithcode.com/sota/point-cloud-generation-on-shapenet-car?p=dit-3d-exploring-plain-diffusion-transformers)
 ### [**Project Page**](https://dit-3d.github.io/) | [**Paper**](https://arxiv.org/abs/2307.01831) | [**Hugging Face**](https://huggingface.co/papers/2307.01831) | [**Twitter**](https://twitter.com/_akhaliq/status/1676789843689455618)
 
 
@@ -95,21 +94,20 @@ For testing and visualization on chair using the DiT-3D model (S/4, no window at
 ```bash
 $ python test.py --dataroot ../../../data/ShapeNetCore.v2.PC15k/ \
     --category chair --num_classes 1 \
+    --bs 64 \
     --model_type 'DiT-S/4' \
     --voxel_size 32 \
-    --model MODEL_PATH \
-    --bs 64 \
-    --generate
+    --model MODEL_PATH
 
 ```
-
-Testing this S/4 model, you should get performance close to tables below.
+Testing this S/4 model, you should get performance close to the tables below.
 
 |Model |    Train Class   |     Test Class     |  1-NNA-CD  | 1-NNA-EMD | COV-CD | COV-EMD|
 |:------:|:--------------:|:---------------:|:-----:|:---:|:----:|:----:| 
 |[DiT-3D-S/4](https://drive.google.com/file/d/19-4Ls9hNDGv0LPuQ-zKn2SUTOc_2-R33/view?usp=sharingg)|   Chair   | Chair | 56.31 | 55.82 | 47.21   | 50.75  |
 
-  
+   
+
 For point clouds rendering, we use [mitsuba](https://github.com/mitsuba-renderer/mitsuba2) for visualization. 
 
 
