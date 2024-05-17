@@ -102,14 +102,14 @@ $ python test.py --dataroot ../../../data/ShapeNetCore.v2.PC15k/ \
     --generate
 
 ```
+
 Testing this S/4 model, you should get performance close to tables below.
 
 |Model |    Train Class   |     Test Class     |  1-NNA-CD  | 1-NNA-EMD | COV-CD | COV-EMD|
 |:------:|:--------------:|:---------------:|:-----:|:---:|:----:|:----:| 
 |[DiT-3D-S/4](https://drive.google.com/file/d/19-4Ls9hNDGv0LPuQ-zKn2SUTOc_2-R33/view?usp=sharingg)|   Chair   | Chair | 56.31 | 55.82 | 47.21   | 50.75  |
 
-   
-
+  
 For point clouds rendering, we use [mitsuba](https://github.com/mitsuba-renderer/mitsuba2) for visualization. 
 
 
