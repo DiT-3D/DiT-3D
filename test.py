@@ -1,22 +1,28 @@
+import os
 import torch
+
 from pprint import pprint
 from metrics.evaluation_metrics import jsd_between_point_cloud_sets as JSD
 from metrics.evaluation_metrics import compute_all_metrics, EMD_CD
 
 import torch.nn as nn
 import torch.utils.data
+import torch.multiprocessing as mp
+import torch.distributed as dist
 
 import argparse
 from torch.distributions import Normal
 
 from utils.file_utils import *
 from utils.visualize import *
+from model.pvcnn_generation import PVCNN2Base
 
 from tqdm import tqdm
 
 from datasets.shapenet_data_pc import ShapeNet15kPointClouds
-
 from models.dit3d import DiT3D_models
+from utils.misc import Evaluator
+
 
 '''
 models
@@ -142,10 +148,7 @@ class GaussianDiffusion:
 
     def p_mean_variance(self, denoise_fn, data, t, y, clip_denoised: bool, return_pred_xstart: bool):
         
-        # print('data:', data.shape)
         model_output = denoise_fn(data, t, y)
-        # print('model_output:', model_output.shape)
-
 
         if self.model_var_type in ['fixedsmall', 'fixedlarge']:
             # below: only log_variance is used in the KL computations
@@ -244,10 +247,9 @@ class Model(nn.Module):
     def __init__(self, args, betas, loss_type: str, model_mean_type: str, model_var_type:str):
         super(Model, self).__init__()
         self.diffusion = GaussianDiffusion(betas, loss_type, model_mean_type, model_var_type)
-
+        
         # DiT-3d
         self.model = DiT3D_models[args.model_type](input_size=args.voxel_size, num_classes=args.num_classes)
-
 
     def prior_kl(self, x0):
         return self.diffusion._prior_bpd(x0)
@@ -348,6 +350,22 @@ def get_constrain_function(ground_truth, mask, eps, num_steps=1):
     return constrain_fn
 
 
+# utils
+@torch.no_grad()
+def concat_all_gather(tensor):
+    """
+    Performs all_gather operation on the provided tensors.
+    *** Warning ***: torch.distributed.all_gather has no gradient.
+    """
+    tensors_gather = [
+        torch.ones_like(tensor) for _ in range(torch.distributed.get_world_size())
+    ]
+    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
+
+    output = torch.cat(tensors_gather, dim=0)
+    return output
+
+
 #############################################################################
 
 def get_dataset(dataroot, npoints,category,use_mask=False):
@@ -373,50 +391,43 @@ def get_dataset(dataroot, npoints,category,use_mask=False):
     return tr_dataset, te_dataset
 
 
+def get_dataloader(opt, train_dataset, test_dataset=None):
 
-def evaluate_gen(opt, ref_pcs, logger):
+    if opt.distribution_type == 'multi':
+        train_sampler = torch.utils.data.distributed.DistributedSampler(
+            train_dataset,
+            num_replicas=opt.world_size,
+            rank=opt.rank
+        )
+        if test_dataset is not None:
+            test_sampler = torch.utils.data.distributed.DistributedSampler(
+                test_dataset,
+                num_replicas=opt.world_size,
+                rank=opt.rank
+            )
+        else:
+            test_sampler = None
+    else:
+        train_sampler = None
+        test_sampler = None
 
-    if ref_pcs is None:
-        _, test_dataset = get_dataset(opt.dataroot, opt.npoints, opt.category, use_mask=False)
-        test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=opt.batch_size,
-                                                      shuffle=False, num_workers=int(opt.workers), drop_last=False)
-        ref = []
-        for data in tqdm(test_dataloader, total=len(test_dataloader), desc='Generating Samples'):
-            x = data['test_points']
-            m, s = data['mean'].float(), data['std'].float()
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.bs,sampler=train_sampler,
+                                                   shuffle=train_sampler is None, num_workers=int(opt.workers), drop_last=True)
 
-            ref.append(x*s + m)
+    if test_dataset is not None:
+        test_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.bs,sampler=test_sampler,
+                                                   shuffle=False, num_workers=int(opt.workers), drop_last=False)
+    else:
+        test_dataloader = None
 
-        ref_pcs = torch.cat(ref, dim=0).contiguous()
-
-    logger.info("Loading sample path: %s"
-      % (opt.eval_path))
-    sample_pcs = torch.load(opt.eval_path).contiguous()
-
-    logger.info("Generation sample size:%s reference size: %s"
-          % (sample_pcs.size(), ref_pcs.size()))
-
-
-    # Compute metrics
-    results = compute_all_metrics(sample_pcs, ref_pcs, opt.batch_size)
-    results = {k: (v.cpu().detach().item()
-                   if not isinstance(v, float) else v) for k, v in results.items()}
-
-    pprint(results)
-    logger.info(results)
-
-    jsd = JSD(sample_pcs.numpy(), ref_pcs.numpy())
-    pprint('JSD: {}'.format(jsd))
-    logger.info('JSD: {}'.format(jsd))
+    return train_dataloader, test_dataloader, train_sampler, test_sampler
 
 
-
-def generate(model, opt):
+def generate_eval(model, opt, gpu, outf_syn, evaluator):
 
     _, test_dataset = get_dataset(opt.dataroot, opt.npoints, opt.category)
 
-    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=opt.batch_size,
-                                                  shuffle=False, num_workers=int(opt.workers), drop_last=False)
+    _, test_dataloader, _, test_sampler = get_dataloader(opt, test_dataset, test_dataset)
 
 
     def new_y_chain(device, num_chain, num_classes):
@@ -425,38 +436,42 @@ def generate(model, opt):
     with torch.no_grad():
 
         samples = []
-        ref = []
 
         for i, data in tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc='Generating Samples'):
 
             x = data['test_points'].transpose(1,2)
             m, s = data['mean'].float(), data['std'].float()
-
             y = data['cate_idx']
-
-            gen = model.gen_samples(x.shape, 'cuda', new_y_chain('cuda',y.shape[0],opt.num_classes), clip_denoised=False).detach().cpu()
+            
+            gen = model.gen_samples(x.shape, gpu, new_y_chain(gpu,y.shape[0],opt.num_classes), clip_denoised=False).detach().cpu()
 
             gen = gen.transpose(1,2).contiguous()
             x = x.transpose(1,2).contiguous()
 
-
-
             gen = gen * s + m
             x = x * s + m
-            samples.append(gen)
-            ref.append(x)
+            samples.append(gen.to(gpu).contiguous())
 
-            visualize_pointcloud_batch(os.path.join(str(Path(opt.eval_path).parent), f'{i}.png'), gen[:64], None,
+            visualize_pointcloud_batch(os.path.join(outf_syn, f'{i}_{gpu}.png'), gen, None,
                                        None, None)
+            
+            # Compute metrics
+            results = compute_all_metrics(gen, x, opt.bs)
+            results = {k: (v.cpu().detach().item()
+                        if not isinstance(v, float) else v) for k, v in results.items()}
+
+            jsd = JSD(gen.numpy(), x.numpy())
+
+            evaluator.update(results, jsd)
+
+        stats = evaluator.finalize_stats()
 
         samples = torch.cat(samples, dim=0)
-        ref = torch.cat(ref, dim=0)
+        samples_gather = concat_all_gather(samples)
 
-        torch.save(samples, opt.eval_path)
+        torch.save(samples_gather, opt.eval_path)
 
-
-
-    return ref
+    return stats
 
 
 def main(opt):
@@ -466,70 +481,137 @@ def main(opt):
         opt.beta_end = 0.008
         opt.schedule_type = 'warm0.1'
 
-    exp_id = os.path.splitext(os.path.basename(__file__))[0]
-    dir_id = os.path.dirname(__file__)
-    output_dir = get_output_dir(dir_id, exp_id)
+    # exp_id = os.path.splitext(os.path.basename(__file__))[0]
+    # dir_id = os.path.dirname(__file__)
+    output_dir = get_output_dir(opt.model_dir, opt.experiment_name)
     copy_source(__file__, output_dir)
+
+    # Use random port to avoid collision between parallel jobs
+    # if opt.world_size == 1:
+    #     opt.port = np.random.randint(10000, 20000)
+    opt.dist_url = f'tcp://{opt.node}:{opt.port}'
+    print('Using url {}'.format(opt.dist_url))
+
+    # if opt.dist_url == "env://" and opt.world_size == -1:
+    #     opt.world_size = int(os.environ["WORLD_SIZE"])
+
+    if opt.distribution_type == 'multi':
+        opt.ngpus_per_node = torch.cuda.device_count()
+        opt.world_size = opt.ngpus_per_node * opt.world_size
+        mp.spawn(test, nprocs=opt.ngpus_per_node, args=(opt, output_dir))
+    else:
+        test(opt.gpu, opt, output_dir)
+
+
+def test(gpu, opt, output_dir):
+
     logger = setup_logging(output_dir)
 
+
+    if opt.distribution_type == 'multi':
+        should_diag = gpu==0
+    else:
+        should_diag = True
+
     outf_syn, = setup_output_subdirs(output_dir, 'syn')
+
+    if opt.distribution_type == 'multi':
+        if opt.dist_url == "env://" and opt.rank == -1:
+            opt.rank = int(os.environ["RANK"])
+
+        base_rank =  opt.rank * opt.ngpus_per_node
+        opt.rank = base_rank + gpu
+        dist.init_process_group(backend=opt.dist_backend, init_method=opt.dist_url,
+                                world_size=opt.world_size, rank=opt.rank)
+
+        opt.bs = int(opt.bs / opt.ngpus_per_node)
+        opt.workers = 0
+
+    '''
+    create networks
+    '''
 
     betas = get_betas(opt.schedule_type, opt.beta_start, opt.beta_end, opt.time_num)
     model = Model(opt, betas, opt.loss_type, opt.model_mean_type, opt.model_var_type)
 
-    if opt.cuda:
-        model.cuda()
+    if opt.distribution_type == 'multi':  # Multiple processes, single GPU per process
+        def _transform_(m):
+            return nn.parallel.DistributedDataParallel(
+                m, device_ids=[gpu], output_device=gpu)
 
-    def _transform_(m):
-        return nn.parallel.DataParallel(m)
+        torch.cuda.set_device(gpu)
+        model.cuda(gpu)
+        model.multi_gpu_wrapper(_transform_)
 
-    model = model.cuda()
-    model.multi_gpu_wrapper(_transform_)
+
+    elif opt.distribution_type == 'single':
+        def _transform_(m):
+            return nn.parallel.DataParallel(m)
+        model = model.cuda()
+        model.multi_gpu_wrapper(_transform_)
+
+    elif gpu is not None:
+        torch.cuda.set_device(gpu)
+        model = model.cuda(gpu)
+    else:
+        raise ValueError('distribution_type = multi | single | None')
+
+    if should_diag:
+        logger.info(opt)
+
+        logger.info("Model = %s" % str(model))
+        total_params = sum(param.numel() for param in model.parameters())/1e6
+        logger.info("Total_params = %s MB " % str(total_params))    # S4: 32.81 MB
 
     model.eval()
 
-    with torch.no_grad():
+    evaluator = Evaluator(results_dir=output_dir)    
 
-        logger.info("Resume Path:%s" % opt.model)
+    with torch.no_grad():
+        
+        if should_diag:
+            logger.info("Resume Path:%s" % opt.model)
 
         resumed_param = torch.load(opt.model)
         model.load_state_dict(resumed_param['model_state'])
-
 
         ref = None
         if opt.generate:
             opt.eval_path = os.path.join(outf_syn, 'samples.pth')
             Path(opt.eval_path).parent.mkdir(parents=True, exist_ok=True)
-            ref=generate(model, opt)
             
-        if opt.eval_gen:
-            # Evaluate generation
-            evaluate_gen(opt, ref, logger)
+            stats = generate_eval(model, opt, gpu, outf_syn, evaluator)
 
+            if should_diag:
+                logger.info(stats)
+        
 
 def parse_args():
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--model_dir', type=str, default='./checkpoints', help='path to save trained model weights')
+    parser.add_argument('--experiment_name', type=str, default='dit3d', help='experiment name (used for checkpointing and logging)')
+
     parser.add_argument('--dataroot', default='ShapeNetCore.v2.PC15k/')
     parser.add_argument('--category', default='chair')
-    parser.add_argument('--num_classes', type=int, default=1)
+    parser.add_argument('--num_classes', type=int, default=55)
 
-    parser.add_argument('--batch_size', type=int, default=50, help='input batch size')
+    parser.add_argument('--bs', type=int, default=64, help='input batch size')
     parser.add_argument('--workers', type=int, default=16, help='workers')
     parser.add_argument('--niter', type=int, default=10000, help='number of epochs to train for')
 
     parser.add_argument('--generate', action='store_true', default=False)
-    parser.add_argument('--eval_gen', action='store_true', default=False)
 
     parser.add_argument('--nc', default=3)
     parser.add_argument('--npoints', default=2048)
     parser.add_argument("--voxel_size", type=int, choices=[16, 32, 64], default=32)
+
     '''model'''
-    parser.add_argument("--model_type", type=str, choices=list(DiT3D_models.keys()), default="DiT-XL/2")
+    parser.add_argument("--model_type", type=str, choices=list(DiT3D_models.keys()), default="DiT-S/4")
     parser.add_argument('--beta_start', default=0.0001)
     parser.add_argument('--beta_end', default=0.02)
     parser.add_argument('--schedule_type', default='linear')
-    parser.add_argument('--time_num', default=1000)
+    parser.add_argument('--time_num', type=int, default=1000)
 
     #params
     parser.add_argument('--attention', default=True)
@@ -539,9 +621,28 @@ def parse_args():
     parser.add_argument('--model_mean_type', default='eps')
     parser.add_argument('--model_var_type', default='fixedsmall')
 
-
     parser.add_argument('--model', default='',required=True, help="path to model (to continue training)")
 
+    '''distributed'''
+    parser.add_argument('--world_size', default=1, type=int,
+                        help='Number of distributed nodes.')
+    parser.add_argument('--node', type=str, default='localhost')
+    parser.add_argument('--port', type=int, default=12345)
+    parser.add_argument('--dist_url', type=str, default='tcp://localhost:12345')
+    # parser.add_argument('--dist_url', default='tcp://127.0.0.1:9991', type=str,
+    #                     help='url used to set up distributed training')
+    parser.add_argument('--dist_backend', default='nccl', type=str,
+                        help='distributed backend')
+    parser.add_argument('--distribution_type', default='single', choices=['multi', 'single', None],
+                        help='Use multi-processing distributed training to launch '
+                             'N processes per node, which has N GPUs. This is the '
+                             'fastest way to use PyTorch for either single node or '
+                             'multi node data parallel training')
+    parser.add_argument('--rank', default=0, type=int,
+                        help='node rank for distributed training')
+    parser.add_argument('--gpu', default=None, type=int,
+                        help='GPU id to use. None means using all available GPUs.')
+    
     '''eval'''
 
     parser.add_argument('--eval_path',
@@ -549,14 +650,8 @@ def parse_args():
 
     parser.add_argument('--manualSeed', default=42, type=int, help='random seed')
 
-    parser.add_argument('--gpu', type=int, default=0, metavar='S', help='gpu id (default: 0)')
-
     opt = parser.parse_args()
 
-    if torch.cuda.is_available():
-        opt.cuda = True
-    else:
-        opt.cuda = False
 
     return opt
 if __name__ == '__main__':

@@ -61,7 +61,6 @@ Pretrained models can be downloaded [here](https://drive.google.com/drive/folder
 
 Note that this pre-trained model is based on Small with a patch size of 4. We reported the XL models to the main table in our paper for final comparisons. 
 
-Testing this S/4 model, you should get performance close to 56.31, 55.82, 47.21, and 50.75 for 1-NNA-CD, 1-NNA-EMD, COV-CD, and COV-EMD.
 
 ## Training
 
@@ -87,18 +86,29 @@ $ python train.py --distribution_type 'multi' \
 ```
 Please check more training scripts in the [scripts](./scripts) folder.
 
+During training, we train each model using each category for 10,000 epochs. We evaluated the test set using checkpoints saved every 25 epochs and reported the best results.
 
 ## Testing
 
 For testing and visualization on chair using the DiT-3D model (S/4, no window attention) with voxel size of 32, please run
 
 ```bash
-$ python test.py --dataroot /path/to/ShapeNetCore.v2.PC15k/ \
-    --category chair \
+$ python test.py --dataroot ../../../data/ShapeNetCore.v2.PC15k/ \
+    --category chair --num_classes 1 \
     --model_type 'DiT-S/4' \
     --voxel_size 32 \
-    --model MODEL_PATH
+    --model MODEL_PATH \
+    --bs 64 \
+    --generate
+
 ```
+Testing this S/4 model, you should get performance close to tables below.
+
+|Model |    Train Class   |     Test Class     |  1-NNA-CD  | 1-NNA-EMD | COV-CD | COV-EMD|
+|:------:|:--------------:|:---------------:|:-----:|:---:|:----:|:----:| 
+|[DiT-3D-S/4](https://drive.google.com/file/d/19-4Ls9hNDGv0LPuQ-zKn2SUTOc_2-R33/view?usp=sharingg)|   Chair   | Chair | 56.31 | 55.82 | 47.21   | 50.75  |
+
+   
 
 For point clouds rendering, we use [mitsuba](https://github.com/mitsuba-renderer/mitsuba2) for visualization. 
 
