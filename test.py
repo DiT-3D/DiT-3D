@@ -15,8 +15,6 @@ from torch.distributions import Normal
 
 from utils.file_utils import *
 from utils.visualize import *
-from model.pvcnn_generation import PVCNN2Base
-
 from tqdm import tqdm
 
 from datasets.shapenet_data_pc import ShapeNet15kPointClouds
@@ -575,15 +573,13 @@ def test(gpu, opt, output_dir):
         resumed_param = torch.load(opt.model)
         model.load_state_dict(resumed_param['model_state'])
 
-        ref = None
-        if opt.generate:
-            opt.eval_path = os.path.join(outf_syn, 'samples.pth')
-            Path(opt.eval_path).parent.mkdir(parents=True, exist_ok=True)
-            
-            stats = generate_eval(model, opt, gpu, outf_syn, evaluator)
+        opt.eval_path = os.path.join(outf_syn, 'samples.pth')
+        Path(opt.eval_path).parent.mkdir(parents=True, exist_ok=True)
+        
+        stats = generate_eval(model, opt, gpu, outf_syn, evaluator)
 
-            if should_diag:
-                logger.info(stats)
+        if should_diag:
+            logger.info(stats)
         
 
 def parse_args():
@@ -599,8 +595,6 @@ def parse_args():
     parser.add_argument('--bs', type=int, default=64, help='input batch size')
     parser.add_argument('--workers', type=int, default=16, help='workers')
     parser.add_argument('--niter', type=int, default=10000, help='number of epochs to train for')
-
-    parser.add_argument('--generate', action='store_true', default=False)
 
     parser.add_argument('--nc', default=3)
     parser.add_argument('--npoints', default=2048)
